@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 13px; margin: 12px; color: #202124; }
+    h3 { margin: 0 0 10px; font-size: 15px; }
+    h4 { margin: 18px 0 6px; font-size: 13px; }
+    label { display: block; margin: 8px 0 3px; font-weight: bold; }
+    input[type=date] { width: 100%; box-sizing: border-box; padding: 6px; }
+    button { width: 100%; padding: 8px; margin-top: 10px; border: 0; border-radius: 4px;
+             background: #1a73e8; color: #fff; font-size: 13px; cursor: pointer; }
+    button.secondary { background: #f1f3f4; color: #202124; border: 1px solid #dadce0; }
+    button:disabled { opacity: .6; cursor: default; }
+    #msg { margin-top: 10px; padding: 8px; border-radius: 4px; display: none; white-space: pre-wrap; }
+    .ok { background: #e6f4ea; color: #137333; }
+    .err { background: #fce8e6; color: #c5221f; }
+    .info { background: #e8f0fe; color: #174ea6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    td { padding: 5px 4px; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+    td:first-child { color: #5f6368; width: 42%; }
+  </style>
+</head>
+<body>
+  <h3>Fogwing Sync</h3>
+
+  <label for="start">Start date</label>
+  <input type="date" id="start">
+  <label for="end">End date</label>
+  <input type="date" id="end">
+
+  <button id="fetchBtn" onclick="doFetch()">Fetch data</button>
+  <button class="secondary" id="testBtn" onclick="doTest()">Test API connection</button>
+
+  <div id="msg"></div>
+
+  <h4>Status</h4>
+  <table id="status"><tr><td colspan="2">Loading...</td></tr></table>
+  <button class="secondary" onclick="loadStatus()">Refresh status</button>
+
+  <script>
+    const today = new Date();
+    const iso = today.getFullYear() + '-' +
+      String(today.getMonth() + 1).padStart(2, '0') + '-' +
+      String(today.getDate()).padStart(2, '0');
+    document.getElementById('start').value = iso;
+    document.getElementById('end').value = iso;
+
+    function show(text, cls) {
+      const m = document.getElementById('msg');
+      m.className = cls;
+      m.textContent = text;
+      m.style.display = 'block';
+    }
+
+    function busy(b) {
+      document.getElementById('fetchBtn').disabled = b;
+      document.getElementById('testBtn').disabled = b;
+    }
+
+    function doFetch() {
+      busy(true);
+      show('Fetching...', 'info');
+      google.script.run
+        .withSuccessHandler(function (r) {
+          busy(false);
+          show('Done.\nFetched: ' + r.fetched + '\nAdded: ' + r.added + '\nSkipped (duplicates): ' + r.skipped, 'ok');
+          loadStatus();
+        })
+        .withFailureHandler(function (e) {
+          busy(false);
+          show('Failed: ' + e.message, 'err');
+          loadStatus();
+        })
+        .fetchFromPanel(document.getElementById('start').value, document.getElementById('end').value);
+    }
+
+    function doTest() {
+      busy(true);
+      show('Testing...', 'info');
+      google.script.run
+        .withSuccessHandler(function (r) {
+          busy(false);
+          show(r.message, r.ok ? 'ok' : 'err');
+        })
+        .withFailureHandler(function (e) {
+          busy(false);
+          show('Failed: ' + e.message, 'err');
+        })
+        .testConnection();
+    }
+
+    function row(k, v) {
+      return '<tr><td>' + k + '</td><td>' + v + '</td></tr>';
+    }
+
+    function esc(s) {
+      return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; });
+    }
+
+    function loadStatus() {
+      google.script.run
+        .withSuccessHandler(function (s) {
+          let h = '';
+          h += row('Auto-fetch', s.autoOn ? 'ON (around ' + s.autoTime + ')' : 'OFF');
+          h += row('Credentials', s.keySaved ? 'Set' : 'NOT SET');
+          h += row('Rows in Data', s.totalRows);
+          if (s.last) {
+            h += row('Last run', esc(s.last.time) + ' (' + esc(s.last.mode) + ')');
+            h += row('Range', esc(s.last.from) + ' to ' + esc(s.last.to));
+            h += row('Result', esc(s.last.fetched) + ' fetched, ' + esc(s.last.added) + ' added, ' + esc(s.last.skipped) + ' skipped');
+            h += row('Status', esc(s.last.status));
+            if (s.last.error) h += row('Error', esc(s.last.error));
+          } else {
+            h += row('Last run', 'No runs logged yet');
+          }
+          document.getElementById('status').innerHTML = h;
+        })
+        .withFailureHandler(function (e) {
+          document.getElementById('status').innerHTML = row('Error', esc(e.message));
+        })
+        .getStatusForPanel();
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>
